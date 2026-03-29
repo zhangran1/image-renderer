@@ -1,0 +1,25 @@
+name: Image Rendering Pipeline
+
+# Trigger the workflow on pushes to main, or manually via the GitHub UI
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch: 
+
+jobs:
+  render-image:
+    # CRITICAL: This targets the GCP runner configured by your Terraform script
+    runs-on: self-hosted 
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        
+      - name: Verify Runner Environment
+        run: |
+          echo "Hello from the GCP self-hosted runner!"
+          hostname
+          
+      # Add your actual image rendering steps below:
+      - name: Render Image
