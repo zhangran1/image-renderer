@@ -16,7 +16,13 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
-        
+
+# Add this step here
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y unzip
+          
       - name: Verify Runner Environment
         run: |
           echo "Connected to GCP Self-Hosted Runner"
