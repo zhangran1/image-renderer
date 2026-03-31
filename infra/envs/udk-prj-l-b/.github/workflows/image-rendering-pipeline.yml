@@ -22,7 +22,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y unzip
-          
+          sudo apt-get install nodejs
+
       - name: Verify Runner Environment
         run: |
           echo "Connected to GCP Self-Hosted Runner"
