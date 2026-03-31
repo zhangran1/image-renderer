@@ -1,0 +1,204 @@
+# This workflow orchestrates an anomaly detection pipeline using a Cloud Function
+# and BigQuery ML.
+
+main:
+  params: [args]
+  steps:
+    - init:
+        assign:
+          - project_id: ${args.project_id}
+          - location: "us-central1"
+          - bq_dataset: ${args.bq_dataset}
+          - bq_table: ${args.bq_table}
+          - bq_model_name: ${args.bq_model_name}
+          - time_column: ${args.time_column}
+          - value_column: ${args.value_column}
+          - cloud_function_url: ${args.cloud_function_url}
+          - redis_host: ${args.redis_host}
+          - redis_port: ${args.redis_port}
+
+    - check_current_time:
+        switch:
+          - condition: ${("current_time" in args)}
+            assign:
+              - current_time: ${args.current_time}
+          - condition: ${true}
+            assign:
+              - current_time: null
+
+    - get_deployed_model_metrics:
+        call: http.post
+        args:
+            url: ${cloud_function_url}
+            auth:
+                type: OIDC
+            body:
+                action: "get_latest_model_metrics"
+                project_id: ${project_id}
+                bq_dataset: ${bq_dataset}
+                bq_model_name: ${bq_model_name}
+                bq_table: ${bq_table}
+                time_column: ${time_column}
+                current_time: ${current_time}
+        result: deployed_model_result
+
+    - decode_deployed_model_metrics:
+        assign:
+          - deployed_model_metrics: ${json.decode(deployed_model_result.body)}
+
+    - log_deployed_metrics:
+        call: sys.log
+        args:
+          json:
+            message: "Deployed Model Metrics"
+            data: ${deployed_model_metrics}
+
+    - train_model:
+        call: http.post
+        args:
+          url: ${cloud_function_url}
+          auth:
+            type: OIDC
+          body:
+            action: "train"
+            project_id: ${project_id}
+            location: ${location}
+            bq_dataset: ${bq_dataset}
+            bq_table: ${bq_table}
+            bq_model_name: ${bq_model_name}
+            time_column: ${time_column}
+            value_column: ${value_column}
+            current_time: ${current_time}
+        result: train_result
+
+    - decode_train_result:
+        assign:
+          - train_result_body: ${json.decode(train_result.body)}
+
+    - log_training_result:
+        call: sys.log
+        args:
+          json:
+            message: "Training step completed"
+            data: ${train_result_body}
+
+    - evaluate_new_model:
+        call: http.post
+        args:
+            url: ${cloud_function_url}
+            auth:
+              type: OIDC
+            body:
+                action: "evaluate"
+                project_id: ${project_id}
+                bq_dataset: ${bq_dataset}
+                bq_model_name: ${train_result_body.bq_model_name}
+                current_time: ${current_time}
+                bq_table: ${bq_table}
+                time_column: ${time_column}
+        result: new_model_evaluate_result
+
+    - decode_new_model_evaluation:
+        assign:
+          - new_model_metrics: ${json.decode(new_model_evaluate_result.body)}
+
+    - log_new_model_evaluation:
+        call: sys.log
+        args:
+          json:
+            message: "New Model Evaluation Metrics"
+            data: ${new_model_metrics}
+
+    - select_champion_model:
+        call: http.post
+        args:
+            url: ${cloud_function_url}
+            auth:
+                type: OIDC
+            body:
+                action: "select_champion"
+                project_id: ${project_id}
+                location: ${location}
+                bq_dataset: ${bq_dataset}
+                new_model_name: ${train_result_body.bq_model_name}
+                vertex_ai_model_id: ${bq_model_name}
+                new_model_metrics: ${new_model_metrics}
+                deployed_model_metrics: ${deployed_model_metrics}
+                current_time: ${current_time}
+        result: champion_selection_result
+        next: decode_champion_selection
+
+    - decode_champion_selection:
+        assign:
+          - champion_selection: ${json.decode(champion_selection_result.body)}
+          - champion_model_name: ${champion_selection.champion_model_name}
+          - champion_model_source: ${champion_selection.champion_model_source}
+          - horizon: ${champion_selection.horizon}
+        next: assign_champion_metrics
+
+    - assign_champion_metrics:
+        switch:
+            - condition: ${champion_model_source == "new"}
+              assign:
+                - champion_model_metrics: ${new_model_metrics}
+              next: log_champion_deployment
+            - condition: ${champion_model_source == "deployed"}
+              assign:
+                - champion_model_metrics: ${deployed_model_metrics}
+              next: log_champion_deployment
+    
+    - log_champion_deployment:
+        call: http.post
+        args:
+            url: ${cloud_function_url}
+            auth:
+                type: OIDC
+            body:
+                action: "log_deployment"
+                project_id: ${project_id}
+                bq_dataset: ${bq_dataset}
+                bq_table: ${bq_table}
+                bq_model_name: ${champion_model_name}
+        result: deployment_log_result
+        next: forecast_with_champion
+
+    - forecast_with_champion:
+        call: http.post
+        args:
+            url: ${cloud_function_url}
+            auth:
+              type: OIDC
+            body:
+                action: "forecast_and_store"
+                project_id: ${project_id}
+                bq_dataset: ${bq_dataset}
+                bq_model_name: ${champion_model_name}
+                redis_host: ${redis_host}
+                redis_port: ${redis_port}
+                horizon: ${horizon}
+        result: forecast_result
+        next: decode_forecast_result
+
+    - decode_forecast_result:
+        assign:
+            - forecast_result_body: ${json.decode(forecast_result.body)}
+        next: create_forecast_report
+
+    - create_forecast_report:
+        assign:
+          - final_report:
+              train_status: ${train_result_body.status}
+              new_model_name: ${train_result_body.bq_model_name}
+              champion_model_source: ${champion_model_source}
+              champion_model_name: ${champion_model_name}
+              champion_model_metrics: ${champion_model_metrics}
+              deployed_model_metrics: ${deployed_model_metrics}
+              new_model_metrics: ${new_model_metrics}
+              forecast_status: ${forecast_result_body.status}
+              forecast_details:
+                redis_key: ${forecast_result_body.redis_key}
+                records_stored: ${forecast_result_body.records_stored}
+        next: final_result
+
+    - final_result:
+        return: ${final_report}

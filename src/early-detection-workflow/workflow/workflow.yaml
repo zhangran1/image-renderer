@@ -1,0 +1,112 @@
+main:
+  params: [args]
+  steps:
+    - init:
+        assign:
+          - project_id: ${args.project_id}
+          - bq_dataset: ${args.bq_dataset}
+          - bq_table: ${args.bq_table}
+          - time_column: ${args.time_column}
+          - value_column: ${args.value_column}
+          - bq_model_name: ${args.bq_model_name}
+          - threshold: ${args.threshold}
+          - pubsub_topic: ${args.pubsub_topic}
+          - cloud_function_url: ${args.cloud_function_url}
+          - pen: ${args.pen}
+    - check_current_time:
+        switch:
+          - condition: ${("current_time" in args)}
+            assign:
+              - current_time: ${args.current_time}
+          - condition: ${true}
+            assign:
+              - current_time: null
+    - detect_change_points:
+        call: http.post
+        args:
+          url: ${cloud_function_url}
+          auth:
+            type: OIDC
+          body:
+            action: "detect_change_points"
+            project_id: ${project_id}
+            bq_dataset: ${bq_dataset}
+            bq_table: ${bq_table}
+            time_column: ${time_column}
+            value_column: ${value_column}
+            current_time: ${current_time}
+            pen: ${pen}
+        result: change_point_result
+    - check_for_increase:
+        switch:
+          - condition: ${change_point_result.body.last_change_point_timestamp != null and change_point_result.body.is_increasing}
+            next: train_model
+        next: no_change_point_found
+    - train_model:
+        call: http.post
+        args:
+          url: ${cloud_function_url}
+          auth:
+            type: OIDC
+          body:
+            action: "train_model"
+            project_id: ${project_id}
+            bq_dataset: ${bq_dataset}
+            bq_model_name: ${bq_model_name}
+            time_column: ${time_column}
+            value_column: ${value_column}
+            bq_table: ${bq_table}
+            start_time: ${change_point_result.body.last_change_point_timestamp}
+            end_time: ${change_point_result.body.end_time}
+        result: train_result
+    - log_train_result:
+        call: sys.log
+        args:
+            text: ${train_result.body}
+    - forecast_and_publish:
+        call: http.post
+        args:
+          url: ${cloud_function_url}
+          auth:
+            type: OIDC
+          body:
+            action: "forecast_and_publish"
+            project_id: ${project_id}
+            bq_dataset: ${bq_dataset}
+            bq_model_name: ${bq_model_name}
+            threshold: ${threshold}
+            pubsub_topic: ${pubsub_topic}
+        result: forecast_result
+    - log_forecast_result:
+        call: sys.log
+        args:
+            text: ${forecast_result.body}
+        next: create_final_report
+    - no_change_point_found:
+        call: sys.log
+        args:
+          text: "No significant change point detected."
+        next: create_final_report
+    - create_final_report:
+        switch:
+          - condition: ${change_point_result.body.last_change_point_timestamp != null and change_point_result.body.is_increasing}
+            assign:
+              - final_report:
+                  change_point_detection_status: "significant change point detected"
+                  last_change_point_timestamp: ${change_point_result.body.last_change_point_timestamp}
+                  is_increasing: ${change_point_result.body.is_increasing}
+                  training_status: ${train_result.body}
+                  forecast_status: ${forecast_result.body.status}
+                  first_exceed_time: ${forecast_result.body.first_exceed_time}
+          - condition: ${true}
+            assign:
+              - final_report:
+                  change_point_detection_status: "no significant change point detected"
+                  last_change_point_timestamp: null
+                  is_increasing: false
+                  training_status: "not run"
+                  forecast_status: "not run"
+                  first_exceed_time: null
+        next: end_workflow
+    - end_workflow:
+        return: ${final_report}

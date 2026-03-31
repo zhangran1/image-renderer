@@ -1,0 +1,57 @@
+name: Image Rendering Pipeline
+
+# Trigger the workflow on pushes to the main branch or manually via the GitHub UI
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch: 
+
+jobs:
+  render-image:
+    # IMPORTANT: This must be 'self-hosted' to use the GCP VMs 
+    # provisioned by your Terraform configuration.
+    runs-on: self-hosted 
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        
+      - name: Verify Runner Environment
+        run: |
+          echo "Connected to GCP Self-Hosted Runner"
+          echo "Hostname: $(hostname)"
+          echo "Working Directory: $(pwd)"
+          
+      - name: Install System Dependencies
+        run: |
+          echo "Updating packages..."
+          sudo apt-get update -y
+          # Add any system packages your renderer needs here
+          # sudo apt-get install -y ffmpeg libsm6 libxext6
+          
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Python Requirements
+        run: |
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          else
+            echo "No requirements.txt found, skipping."
+          fi
+          
+      - name: Execute Image Render
+        run: |
+          echo "Starting image rendering process..."
+          # Replace 'render.py' with your actual script name
+          # python render.py 
+          echo "Render complete!"
+
+      - name: Upload Rendered Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: rendered-images
+          path: output/ # Make sure this matches your script's output folder

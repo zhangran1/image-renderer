@@ -1,0 +1,12 @@
+# Functions Framework for writing portable GCF functions
+functions-framework==3.*
+
+# Google Cloud clients
+google-cloud-bigquery[pandas]==3.*
+google-cloud-aiplatform>=1.38.0
+redis==5.*
+
+# For making HTTP requests (optional, but good practice)
+requests==2.*
+python-dateutil~=2.8
+pandas>=2.0.0

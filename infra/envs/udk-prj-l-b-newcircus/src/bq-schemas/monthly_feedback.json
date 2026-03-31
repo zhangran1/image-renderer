@@ -1,0 +1,27 @@
+[
+  {
+    "name": "series_id",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "timestamp",
+    "type": "TIMESTAMP",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "label_type",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "reason_category",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "feedback_at",
+    "type": "TIMESTAMP",
+    "mode": "NULLABLE"
+  }
+]

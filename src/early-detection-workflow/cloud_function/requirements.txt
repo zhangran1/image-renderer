@@ -1,0 +1,9 @@
+google-cloud-bigquery[pandas]
+google-cloud-storage
+pandas
+numpy
+ruptures
+google-cloud-pubsub
+gcsfs
+python-dateutil~=2.8
+kneed

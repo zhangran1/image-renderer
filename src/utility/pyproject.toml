@@ -1,0 +1,11 @@
+[project]
+name = "udk-mlops"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "google-cloud-bigquery>=3.40.0",
+    "google-cloud-pubsub>=2.0.0",
+    "google-cloud-redis>=2.0.0",
+]

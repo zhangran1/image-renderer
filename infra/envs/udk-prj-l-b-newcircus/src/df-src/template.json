@@ -1,0 +1,11 @@
+{
+  "image": "gcr.io/dataflow-templates-base/python3-template-launcher-base:latest",
+  "sdk_info": {
+    "language": "PYTHON"
+  },
+  "metadata": {
+    "name": "Network Events Kafka to BigQuery",
+    "description": "Ingests network events from a Kafka topic and writes them to BigQuery.",
+    "parameters": []
+  }
+}
